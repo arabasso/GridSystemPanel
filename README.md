@@ -1,14 +1,14 @@
 # GridSystemPanel
-Responsive and the columns will re-arrange depending on the window size for Windows Forms.
+Responsive and the columns will re-arrange depending on the window size for .NET Windows Forms.
 
-## Extra Small
+## Extra Small (< 576)
 ![alt text](https://i.imgur.com/o0a2OMe.png)
 
-## Medium
+## Medium (< 768)
 ![alt text](https://i.imgur.com/YBUCLyM.png)
 
-## Large
+## Large (< 992)
 ![alt text](https://i.imgur.com/ovHP1um.png)
 
-## Extra Large
+## Extra Large (< 1200)
 ![alt text](https://i.imgur.com/jnl1weu.png)
