@@ -117,7 +117,6 @@ namespace GridSystemPanel.Controls
             var top = parent.Padding.Top;
             var left = 0.0f;
             var maxHeight = 0;
-            var lastMaxHeight = maxHeight;
 
             foreach (var control in parent.Controls.OfType<Control>().Where(w => w.Visible).Reverse())
             {
@@ -132,11 +131,7 @@ namespace GridSystemPanel.Controls
                     ? controlPreferredSize.Height
                     : control.Size.Height;
 
-                maxHeight = Math.Max(height + control.Margin.Vertical, maxHeight);
-
                 var finalWidth = parent.LayoutResolution.Compute(width, _layout[control].Column) - control.Margin.Horizontal;
-
-                lastMaxHeight = maxHeight;
 
                 if ((int)(left + control.Margin.Horizontal + finalWidth) > width)
                 {
@@ -145,6 +140,8 @@ namespace GridSystemPanel.Controls
 
                     maxHeight = 0;
                 }
+
+                maxHeight = Math.Max(height + control.Margin.Vertical, maxHeight);
 
                 left += parent.LayoutResolution.Compute(width, _layout[control].ColumnOffset);
 
@@ -157,7 +154,7 @@ namespace GridSystemPanel.Controls
 
             if (parent.AutoSize)
             {
-                var height = top + lastMaxHeight + parent.Padding.Bottom;
+                var height = top + maxHeight + parent.Padding.Bottom;
 
                 if (parent.Dock == DockStyle.Bottom)
                 {
