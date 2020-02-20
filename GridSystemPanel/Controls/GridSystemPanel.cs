@@ -6,6 +6,7 @@ using System.ComponentModel.Design.Serialization;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Windows.Forms.Layout;
@@ -321,6 +322,17 @@ namespace GridSystemPanel.Controls
                 {
                     var layout = (GridSystemPanelLayout)value;
 
+                    if (layout.ShouldSerializeAll())
+                    {
+                        return new InstanceDescriptor((MemberInfo) typeof (GridSystemPanelLayout).GetConstructor(new[]
+                        {
+                            typeof (float)
+                        }), new[]
+                        {
+                            (object) layout.All
+                        });
+                    }
+
                     return new InstanceDescriptor(typeof(GridSystemPanelLayout).GetConstructor(new[]
                     {
                         typeof (float),
@@ -349,6 +361,13 @@ namespace GridSystemPanel.Controls
             if (context == null) throw new ArgumentNullException(nameof(context));
             if (propertyValues == null) throw new ArgumentNullException(nameof(propertyValues));
 
+            var padding = (GridSystemPanelLayout) context.PropertyDescriptor.GetValue(context.Instance);
+
+            var propertyValue = (float) propertyValues["All"];
+
+            if (Math.Abs(padding.All - propertyValue) > GridSystemPanelLayout.Tolerance)
+                return new GridSystemPanelLayout(propertyValue);
+
             return new GridSystemPanelLayout((float)propertyValues["ExtraSmall"], (float)propertyValues["Small"], (float)propertyValues["Medium"], (float)propertyValues["Large"], (float)propertyValues["ExtraLarge"]);
         }
 
@@ -359,6 +378,7 @@ namespace GridSystemPanel.Controls
         {
             return TypeDescriptor.GetProperties(typeof(GridSystemPanelLayout), attributes).Sort(new[]
             {
+                "All",
                 "ExtraSmall",
                 "Small",
                 "Medium",
@@ -379,13 +399,114 @@ namespace GridSystemPanel.Controls
     [Serializable]
     public struct GridSystemPanelLayout
     {
+        internal const double Tolerance = 0.0001;
+
         public static readonly GridSystemPanelLayout Empty;
 
-        public float ExtraSmall { get; set; }
-        public float Small { get; set; }
-        public float Medium { get; set; }
-        public float Large { get; set; }
-        public float ExtraLarge { get; set; }
+        private bool _all;
+        private float _extraSmall;
+        private float _small;
+        private float _medium;
+        private float _large;
+        private float _extraLarge;
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float All
+        {
+            get
+            {
+                if (!_all)
+                    return -1;
+                return _extraSmall;
+            }
+            set
+            {
+                if (_all && Math.Abs(_extraSmall - value) < Tolerance)
+                    return;
+
+                _all = true;
+
+                _extraSmall = _small = _medium = _large = _extraLarge = value;
+            }
+        }
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float ExtraSmall
+        {
+            get => _extraSmall;
+            set
+            {
+                if (!_all && Math.Abs(_extraSmall - value) < Tolerance)
+                    return;
+
+                _all = false;
+                _extraSmall = value;
+            }
+        }
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float Small
+        {
+            get => _small;
+            set
+            {
+                if (!_all && Math.Abs(_small - value) < Tolerance)
+                    return;
+
+                _all = false;
+                _small = value;
+            }
+        }
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float Medium
+        {
+            get => _medium;
+            set
+            {
+                if (!_all && Math.Abs(_medium - value) < Tolerance)
+                    return;
+
+                _all = false;
+                _medium = value;
+            }
+        }
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float Large
+        {
+            get => _large;
+            set
+            {
+                if (!_all && Math.Abs(_large - value) < Tolerance)
+                    return;
+
+                _all = false;
+                _large = value;
+            }
+        }
+
+        [RefreshProperties(RefreshProperties.All)]
+        public float ExtraLarge
+        {
+            get => _extraLarge;
+            set
+            {
+                if (!_all && Math.Abs(_extraLarge - value) < Tolerance)
+                    return;
+
+                _all = false;
+                _extraLarge = value;
+            }
+        }
+
+        public GridSystemPanelLayout(
+            float all)
+        {
+            _all = true;
+
+            _extraSmall = _small = _medium = _large = _extraLarge = all;
+        }
 
         public GridSystemPanelLayout(
             float extraSmall,
@@ -394,11 +515,20 @@ namespace GridSystemPanel.Controls
             float large,
             float extraLarge)
         {
-            ExtraSmall = extraSmall;
-            Small = small;
-            Medium = medium;
-            Large = large;
-            ExtraLarge = extraLarge;
+            _extraSmall = extraSmall;
+            _small = small;
+            _medium = medium;
+            _large = large;
+            _extraLarge = extraLarge;
+            _all = Math.Abs(_extraSmall - _small) < Tolerance
+                && Math.Abs(_extraSmall - _medium) < Tolerance
+                && Math.Abs(_extraSmall - _large) < Tolerance
+                && Math.Abs(_extraSmall - _extraLarge) < Tolerance;
+        }
+
+        internal bool ShouldSerializeAll()
+        {
+            return _all;
         }
     }
 
