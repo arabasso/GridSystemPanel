@@ -6,7 +6,6 @@ using System.ComponentModel.Design.Serialization;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Windows.Forms.Layout;
@@ -15,6 +14,7 @@ namespace GridSystemPanel.Controls
 {
     [ProvideProperty("LayoutColumn", typeof(Control))]
     [ProvideProperty("LayoutColumnOffset", typeof(Control))]
+    [ProvideProperty("LayoutBreak", typeof(Control))]
     [ComVisible(true)]
     [ClassInterface(ClassInterfaceType.AutoDispatch)]
     public class GridSystemPanel :
@@ -76,6 +76,24 @@ namespace GridSystemPanel.Controls
             return _layoutEngine.GetLayoutColumnOffset(control);
         }
 
+        public void SetLayoutBreak(
+            Control control,
+            GridSystemPanelLayoutBreak layoutBreak)
+        {
+            _layoutEngine.SetLayoutBreak(control, layoutBreak);
+
+            if (IsHandleCreated)
+            {
+                PerformLayout();
+            }
+        }
+
+        public GridSystemPanelLayoutBreak GetLayoutBreak(
+            Control control)
+        {
+            return _layoutEngine.GetLayoutBreak(control);
+        }
+
         bool IExtenderProvider.CanExtend(
             object obj)
         {
@@ -100,6 +118,47 @@ namespace GridSystemPanel.Controls
                 }
             }
         }
+
+        public override Size GetPreferredSize(
+            Size proposedSize)
+        {
+            if (!Controls.OfType<Control>().Any(w => w.Visible)) return Size;
+
+            var parentDisplayRectangle = DisplayRectangle;
+
+            var width = ClientSize.Width - Padding.Horizontal;
+
+            var top = Padding.Top;
+            var left = 0.0f;
+            var maxHeight = 0;
+
+            foreach (var control in Controls.OfType<Control>().Where(w => w.Visible).Reverse())
+            {
+                var controlPreferredSize = control.GetPreferredSize(parentDisplayRectangle.Size);
+
+                var height = control.AutoSize
+                    ? controlPreferredSize.Height
+                    : control.Size.Height;
+
+                var finalWidth = LayoutResolution.Compute(width, _layoutEngine.GetLayoutColumn(control)) - control.Margin.Horizontal;
+
+                left += LayoutResolution.Compute(width, _layoutEngine.GetLayoutColumnOffset(control));
+
+                if ((int)(left + control.Margin.Horizontal + finalWidth) > width || LayoutResolution.Compute(width, _layoutEngine.GetLayoutBreak(control)))
+                {
+                    left = 0.0f;
+                    top += maxHeight;
+
+                    maxHeight = 0;
+                }
+
+                maxHeight = Math.Max(height + control.Margin.Vertical, maxHeight);
+
+                left += finalWidth + control.Margin.Horizontal;
+            }
+
+            return new Size(base.GetPreferredSize(proposedSize).Width, top + maxHeight + Padding.Bottom);
+        }
     }
 
     public class GridSystemLayout :
@@ -121,20 +180,17 @@ namespace GridSystemPanel.Controls
 
             foreach (var control in parent.Controls.OfType<Control>().Where(w => w.Visible).Reverse())
             {
-                if (!_layout.ContainsKey(control))
-                {
-                    _layout.Add(control, new GridSystemPanelLayoutControl());
-                }
-
                 var controlPreferredSize = control.GetPreferredSize(parentDisplayRectangle.Size);
 
                 var height = control.AutoSize
                     ? controlPreferredSize.Height
                     : control.Size.Height;
 
-                var finalWidth = parent.LayoutResolution.Compute(width, _layout[control].Column) - control.Margin.Horizontal;
+                var finalWidth = parent.LayoutResolution.Compute(width, GetLayoutColumn(control)) - control.Margin.Horizontal;
 
-                if ((int)(left + control.Margin.Horizontal + finalWidth) > width)
+                left += parent.LayoutResolution.Compute(width, GetLayoutColumnOffset(control));
+
+                if ((int)(left + control.Margin.Horizontal + finalWidth) > width || parent.LayoutResolution.Compute(width, GetLayoutBreak(control)))
                 {
                     left = 0.0f;
                     top += maxHeight;
@@ -143,8 +199,6 @@ namespace GridSystemPanel.Controls
                 }
 
                 maxHeight = Math.Max(height + control.Margin.Vertical, maxHeight);
-
-                left += parent.LayoutResolution.Compute(width, _layout[control].ColumnOffset);
 
                 control.Location = new Point((int)(left + control.Margin.Left + parent.Padding.Left), top + control.Margin.Top);
 
@@ -160,6 +214,11 @@ namespace GridSystemPanel.Controls
                 if (parent.Dock == DockStyle.Bottom)
                 {
                     parent.Location = new Point(parent.Location.X,  parent.Location.Y - height);
+                }
+
+                if (!parent.Controls.OfType<Control>().Any(w => w.Visible))
+                {
+                    height = parent.ClientSize.Height;
                 }
 
                 parent.ClientSize = new Size(parent.ClientSize.Width, height);
@@ -189,6 +248,11 @@ namespace GridSystemPanel.Controls
         public GridSystemPanelLayout GetLayoutColumn(
             Control control)
         {
+            if (!_layout.ContainsKey(control))
+            {
+                _layout.Add(control, new GridSystemPanelLayoutControl());
+            }
+
             return _layout[control].Column;
         }
 
@@ -213,7 +277,41 @@ namespace GridSystemPanel.Controls
         public GridSystemPanelLayout GetLayoutColumnOffset(
             Control control)
         {
+            if (!_layout.ContainsKey(control))
+            {
+                _layout.Add(control, new GridSystemPanelLayoutControl());
+            }
+
             return _layout[control].ColumnOffset;
+        }
+
+        public void SetLayoutBreak(
+            Control control,
+            GridSystemPanelLayoutBreak layoutBreak)
+        {
+            if (!_layout.ContainsKey(control))
+            {
+                _layout.Add(control, new GridSystemPanelLayoutControl
+                {
+                    Break = layoutBreak
+                });
+            }
+
+            else
+            {
+                _layout[control].Break = layoutBreak;
+            }
+        }
+
+        public GridSystemPanelLayoutBreak GetLayoutBreak(
+            Control control)
+        {
+            if (!_layout.ContainsKey(control))
+            {
+                _layout.Add(control, new GridSystemPanelLayoutControl());
+            }
+
+            return _layout[control].Break;
         }
 
         private readonly Dictionary<Control, GridSystemPanelLayoutControl>
@@ -224,11 +322,13 @@ namespace GridSystemPanel.Controls
     {
         internal GridSystemPanelLayout Column;
         internal GridSystemPanelLayout ColumnOffset;
+        internal GridSystemPanelLayoutBreak Break;
 
         public GridSystemPanelLayoutControl()
         {
             Column = new GridSystemPanelLayout(100, 50, 50, 50, 50);
-            ColumnOffset = new GridSystemPanelLayout(0, 0, 0, 0, 0);
+            ColumnOffset = new GridSystemPanelLayout(0);
+            Break = new GridSystemPanelLayoutBreak();
         }
     }
 
@@ -324,7 +424,7 @@ namespace GridSystemPanel.Controls
 
                     if (layout.ShouldSerializeAll())
                     {
-                        return new InstanceDescriptor((MemberInfo) typeof (GridSystemPanelLayout).GetConstructor(new[]
+                        return new InstanceDescriptor(typeof (GridSystemPanelLayout).GetConstructor(new[]
                         {
                             typeof (float)
                         }), new[]
@@ -366,7 +466,9 @@ namespace GridSystemPanel.Controls
             var propertyValue = (float) propertyValues["All"];
 
             if (Math.Abs(padding.All - propertyValue) > GridSystemPanelLayout.Tolerance)
+            {
                 return new GridSystemPanelLayout(propertyValue);
+            }
 
             return new GridSystemPanelLayout((float)propertyValues["ExtraSmall"], (float)propertyValues["Small"], (float)propertyValues["Medium"], (float)propertyValues["Large"], (float)propertyValues["ExtraLarge"]);
         }
@@ -421,12 +523,14 @@ namespace GridSystemPanel.Controls
             }
             set
             {
-                if (_all && Math.Abs(_extraSmall - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (_all && Math.Abs(_extraSmall - v) < Tolerance)
                     return;
 
                 _all = true;
 
-                _extraSmall = _small = _medium = _large = _extraLarge = value;
+                _extraSmall = _small = _medium = _large = _extraLarge = v;
             }
         }
 
@@ -436,11 +540,13 @@ namespace GridSystemPanel.Controls
             get => _extraSmall;
             set
             {
-                if (!_all && Math.Abs(_extraSmall - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (!_all && Math.Abs(_extraSmall - v) < Tolerance)
                     return;
 
                 _all = false;
-                _extraSmall = value;
+                _extraSmall = v;
             }
         }
 
@@ -450,11 +556,13 @@ namespace GridSystemPanel.Controls
             get => _small;
             set
             {
-                if (!_all && Math.Abs(_small - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (!_all && Math.Abs(_small - v) < Tolerance)
                     return;
 
                 _all = false;
-                _small = value;
+                _small = v;
             }
         }
 
@@ -464,11 +572,13 @@ namespace GridSystemPanel.Controls
             get => _medium;
             set
             {
-                if (!_all && Math.Abs(_medium - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (!_all && Math.Abs(_medium - v) < Tolerance)
                     return;
 
                 _all = false;
-                _medium = value;
+                _medium = v;
             }
         }
 
@@ -478,11 +588,13 @@ namespace GridSystemPanel.Controls
             get => _large;
             set
             {
-                if (!_all && Math.Abs(_large - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (!_all && Math.Abs(_large - v) < Tolerance)
                     return;
 
                 _all = false;
-                _large = value;
+                _large = v;
             }
         }
 
@@ -492,11 +604,13 @@ namespace GridSystemPanel.Controls
             get => _extraLarge;
             set
             {
-                if (!_all && Math.Abs(_extraLarge - value) < Tolerance)
+                var v = Math.Min(Math.Max(value, 0), 100);
+
+                if (!_all && Math.Abs(_extraLarge - v) < Tolerance)
                     return;
 
                 _all = false;
-                _extraLarge = value;
+                _extraLarge = v;
             }
         }
 
@@ -505,7 +619,7 @@ namespace GridSystemPanel.Controls
         {
             _all = true;
 
-            _extraSmall = _small = _medium = _large = _extraLarge = all;
+            _extraSmall = _small = _medium = _large = _extraLarge = Math.Min(Math.Max(all, 0), 100);
         }
 
         public GridSystemPanelLayout(
@@ -515,11 +629,11 @@ namespace GridSystemPanel.Controls
             float large,
             float extraLarge)
         {
-            _extraSmall = extraSmall;
-            _small = small;
-            _medium = medium;
-            _large = large;
-            _extraLarge = extraLarge;
+            _extraSmall = Math.Min(Math.Max(extraSmall, 0), 100);
+            _small = Math.Min(Math.Max(small, 0), 100);
+            _medium = Math.Min(Math.Max(medium, 0), 100);
+            _large = Math.Min(Math.Max(large, 0), 100);
+            _extraLarge = Math.Min(Math.Max(extraLarge, 0), 100);
             _all = Math.Abs(_extraSmall - _small) < Tolerance
                 && Math.Abs(_extraSmall - _medium) < Tolerance
                 && Math.Abs(_extraSmall - _large) < Tolerance
@@ -529,6 +643,178 @@ namespace GridSystemPanel.Controls
         internal bool ShouldSerializeAll()
         {
             return _all;
+        }
+    }
+
+    public class GridSystemPanelLayoutBreakConverter :
+        TypeConverter
+    {
+        public override bool GetCreateInstanceSupported(
+            ITypeDescriptorContext context)
+        {
+            return true;
+        }
+
+        public override bool CanConvertFrom(
+            ITypeDescriptorContext context,
+            Type sourceType)
+        {
+            return sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+        }
+
+        public override bool CanConvertTo(
+            ITypeDescriptorContext context,
+            Type destinationType)
+        {
+            return destinationType == typeof(InstanceDescriptor) || base.CanConvertTo(context, destinationType);
+        }
+
+        public override object ConvertFrom(
+            ITypeDescriptorContext context,
+            CultureInfo culture,
+            object value)
+        {
+            if (!(value is string str1)) return base.ConvertFrom(context, culture, value);
+
+            var str2 = str1.Trim();
+
+            if (str2.Length == 0) return null;
+
+            var strArray = str2.Split(culture.TextInfo.ListSeparator[0]);
+
+            var numArray = new bool[strArray.Length];
+
+            var converter = TypeDescriptor.GetConverter(typeof(bool));
+
+            for (var index = 0; index < numArray.Length; ++index)
+            {
+                numArray[index] = (bool?)converter.ConvertFromString(context, culture, strArray[index]) ?? false;
+            }
+
+            if (numArray.Length == 5)
+            {
+                return new GridSystemPanelLayoutBreak(numArray[0], numArray[1], numArray[2], numArray[3], numArray[4]);
+            }
+
+            throw new ArgumentException($"TextParseFailedFormat {nameof(value)} {str2} ExtraSmall, Small, Medium, Large, ExtraLarge");
+        }
+
+        public override object ConvertTo(
+          ITypeDescriptorContext context,
+          CultureInfo culture,
+          object value,
+          Type destinationType)
+        {
+            if (destinationType == null) throw new ArgumentNullException(nameof(destinationType));
+
+            if (value is GridSystemPanelLayoutBreak)
+            {
+                if (destinationType == typeof(string))
+                {
+                    var layoutBreak = (GridSystemPanelLayoutBreak)value;
+
+                    if (culture == null) culture = CultureInfo.CurrentCulture;
+
+                    var separator = culture.TextInfo.ListSeparator + " ";
+
+                    var converter = TypeDescriptor.GetConverter(typeof(bool));
+
+                    var strArray = new[]
+                    {
+                        converter.ConvertToString(context, culture, layoutBreak.ExtraSmall),
+                        converter.ConvertToString(context, culture, layoutBreak.Small),
+                        converter.ConvertToString(context, culture, layoutBreak.Medium),
+                        converter.ConvertToString(context, culture, layoutBreak.Large),
+                        converter.ConvertToString(context, culture, layoutBreak.ExtraLarge),
+                    };
+
+                    return string.Join(separator, strArray);
+                }
+
+                if (destinationType == typeof(InstanceDescriptor))
+                {
+                    var layout = (GridSystemPanelLayoutBreak)value;
+
+                    return new InstanceDescriptor(typeof(GridSystemPanelLayoutBreak).GetConstructor(new[]
+                    {
+                        typeof (bool),
+                        typeof (bool),
+                        typeof (bool),
+                        typeof (bool),
+                        typeof (bool),
+                    }), new object[]
+                    {
+                        layout.ExtraSmall,
+                        layout.Small,
+                        layout.Medium,
+                        layout.Large,
+                        layout.ExtraLarge,
+                    });
+                }
+            }
+
+            return base.ConvertTo(context, culture, value, destinationType);
+        }
+
+        public override object CreateInstance(
+            ITypeDescriptorContext context,
+            IDictionary propertyValues)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (propertyValues == null) throw new ArgumentNullException(nameof(propertyValues));
+
+            return new GridSystemPanelLayoutBreak((bool)propertyValues["ExtraSmall"], (bool)propertyValues["Small"], (bool)propertyValues["Medium"], (bool)propertyValues["Large"], (bool)propertyValues["ExtraLarge"]);
+        }
+
+        public override PropertyDescriptorCollection GetProperties(
+            ITypeDescriptorContext context,
+            object value,
+            Attribute[] attributes)
+        {
+            return TypeDescriptor.GetProperties(typeof(GridSystemPanelLayoutBreak), attributes).Sort(new[]
+            {
+                "ExtraSmall",
+                "Small",
+                "Medium",
+                "Large",
+                "ExtraLarge"
+            });
+        }
+
+        public override bool GetPropertiesSupported(
+            ITypeDescriptorContext context)
+        {
+            return true;
+        }
+    }
+
+    [TypeConverter(typeof(GridSystemPanelLayoutBreakConverter))]
+    [ComVisible(true)]
+    [Serializable]
+    public struct GridSystemPanelLayoutBreak
+    {
+        public bool ExtraSmall { get; set; }
+
+        public bool Small { get; set; }
+
+        public bool Medium { get; set; }
+
+        public bool Large { get; set; }
+
+        public bool ExtraLarge { get; set; }
+
+        public GridSystemPanelLayoutBreak(
+            bool extraSmall,
+            bool small,
+            bool medium,
+            bool large,
+            bool extraLarge)
+        {
+            ExtraSmall = extraSmall;
+            Small = small;
+            Medium = medium;
+            Large = large;
+            ExtraLarge = extraLarge;
         }
     }
 
@@ -802,6 +1088,33 @@ namespace GridSystemPanel.Controls
             }
 
             return (width * layout.ExtraLarge / 100.0f);
+        }
+
+        public bool Compute(
+            float width,
+            GridSystemPanelLayoutBreak layoutBreak)
+        {
+            if (width < ExtraSmall)
+            {
+                return layoutBreak.ExtraSmall;
+            }
+
+            if (width < Small)
+            {
+                return layoutBreak.Small;
+            }
+
+            if (width < Medium)
+            {
+                return layoutBreak.Medium;
+            }
+
+            if (width < Large)
+            {
+                return layoutBreak.Large;
+            }
+
+            return layoutBreak.ExtraLarge;
         }
     }
 }
