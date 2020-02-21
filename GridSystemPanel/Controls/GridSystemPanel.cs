@@ -26,6 +26,7 @@ namespace GridSystemPanel.Controls
         private GridSystemPanelLayoutResolution _layoutResolution = GridSystemPanelLayoutResolution.Bootstrap;
         private bool _autoSize;
 
+        [Category("Layout")]
         public GridSystemPanelLayoutResolution LayoutResolution
         {
             get => _layoutResolution;
@@ -40,6 +41,7 @@ namespace GridSystemPanel.Controls
             }
         }
 
+        [Category("Layout")]
         public void SetLayoutColumn(
             Control control,
             GridSystemPanelLayout layout)
@@ -52,12 +54,14 @@ namespace GridSystemPanel.Controls
             }
         }
 
+        [Category("Layout")]
         public GridSystemPanelLayout GetLayoutColumn(
             Control control)
         {
             return _layoutEngine.GetLayoutColumn(control);
         }
 
+        [Category("Layout")]
         public void SetLayoutColumnOffset(
             Control control,
             GridSystemPanelLayout layout)
@@ -70,12 +74,14 @@ namespace GridSystemPanel.Controls
             }
         }
 
+        [Category("Layout")]
         public GridSystemPanelLayout GetLayoutColumnOffset(
             Control control)
         {
             return _layoutEngine.GetLayoutColumnOffset(control);
         }
 
+        [Category("Layout")]
         public void SetLayoutBreak(
             Control control,
             GridSystemPanelLayoutBreak layoutBreak)
@@ -88,6 +94,7 @@ namespace GridSystemPanel.Controls
             }
         }
 
+        [Category("Layout")]
         public GridSystemPanelLayoutBreak GetLayoutBreak(
             Control control)
         {
